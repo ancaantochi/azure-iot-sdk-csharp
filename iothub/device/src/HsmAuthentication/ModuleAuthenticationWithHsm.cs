@@ -28,8 +28,8 @@ namespace Microsoft.Azure.Devices.Client.HsmAuthentication
         /// <summary>
         /// 
         /// </summary>
-        /// <param name="iotHub"></param>
-        /// <param name="suggestedTimeToLive"></param>
+        /// <param name="iotHub">IotHub hostname</param>
+        /// <param name="suggestedTimeToLive">Suggested time to live seconds</param>
         /// <returns></returns>
         protected override async Task<string> SafeCreateNewToken(string iotHub, int suggestedTimeToLive)
         {

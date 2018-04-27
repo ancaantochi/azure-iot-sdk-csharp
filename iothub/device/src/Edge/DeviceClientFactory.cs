@@ -36,10 +36,10 @@ namespace Microsoft.Azure.Devices.Client.Edge
         /// <summary>
         /// Initializes a new instance of the <see cref="DeviceClientFactory"/> class with transport type.
         /// </summary>
-        /// <param name="transporType">Specifies whether Amqp, MQTT or Http transport is used.</param>
-        public DeviceClientFactory(TransportType transporType)
+        /// <param name="transportType">Specifies whether AMQP, MQTT or HTTP transport is used.</param>
+        public DeviceClientFactory(TransportType transportType)
         {
-            this.transportType = transporType;
+            this.transportType = transportType;
         }
 
         /// <summary>
