@@ -5,6 +5,8 @@ namespace Microsoft.Azure.Devices.Client
 {
     using System;
     using Microsoft.Azure.Devices.Client.Extensions;
+    using System.Collections;
+    using Microsoft.Azure.Devices.Client.HsmAuthentication;
 
     /// <summary>
     /// Creates an instance of an implementation of <see cref="IAuthenticationMethod"/> based on known authentication parameters.
@@ -127,6 +129,73 @@ namespace Microsoft.Azure.Devices.Client
         public static IAuthenticationMethod CreateAuthenticationWithRegistrySymmetricKey(string deviceId, string moduleId, string key)
         {
             return new ModuleAuthenticationWithRegistrySymmetricKey(deviceId, moduleId, key);
+        }
+
+        public static IAuthenticationMethod CreateAuthenticationWithEdge()
+        {
+            return new EdgeAuthenticationMethodFactory().Create();
+            
+        }
+
+        class EdgeAuthenticationMethodFactory 
+        {
+            const string IotEdgedUriVariableName = "IOTEDGE_IOTEDGEDURI";
+            const string IotEdgedApiVersionVariableName = "IOTEDGE_IOTEDGEDVERSION";
+            const string IotHubHostnameVariableName = "IOTEDGE_IOTHUBHOSTNAME";
+            const string GatewayHostnameVariableName = "IOTEDGE_GATEWAYHOSTNAME";
+            const string DeviceIdVariableName = "IOTEDGE_DEVICEID";
+            const string ModuleIdVariableName = "IOTEDGE_MODULEID";
+            const string AuthSchemeVariableName = "IOTEDGE_AUTHSCHEME";
+            const string SasTokenAuthScheme = "SasToken";
+            const string EdgehubConnectionstringVariableName = "EdgeHubConnectionString";
+            const string IothubConnectionstringVariableName = "IotHubConnectionString";
+
+            public IAuthenticationMethod Create()
+            {
+                IDictionary envVariables = Environment.GetEnvironmentVariables();
+
+                string connectionString = this.GetValueFromEnvironment(envVariables, EdgehubConnectionstringVariableName) ?? this.GetValueFromEnvironment(envVariables, IothubConnectionstringVariableName);
+
+                // First try to create from connection string and if env variable for connection string is not found try to create from edgedUri
+                if (!string.IsNullOrWhiteSpace(connectionString))
+                {
+                     var iotHubConnectionStringBuilder = IotHubConnectionStringBuilder.Create(connectionString);
+                     return GetAuthenticationMethod(iotHubConnectionStringBuilder);
+                }
+                else
+                {
+                    string edgedUri = this.GetValueFromEnvironment(envVariables, IotEdgedUriVariableName) ?? throw new InvalidOperationException($"Environement variable {IotEdgedUriVariableName} is required.");
+                    string deviceId = this.GetValueFromEnvironment(envVariables, DeviceIdVariableName) ?? throw new InvalidOperationException($"Environement variable {DeviceIdVariableName} is required.");
+                    string moduleId = this.GetValueFromEnvironment(envVariables, ModuleIdVariableName) ?? throw new InvalidOperationException($"Environement variable {ModuleIdVariableName} is required.");
+                    string hostname = this.GetValueFromEnvironment(envVariables, IotHubHostnameVariableName) ?? throw new InvalidOperationException($"Environement variable {IotHubHostnameVariableName} is required.");
+                    string authScheme = this.GetValueFromEnvironment(envVariables, AuthSchemeVariableName) ?? throw new InvalidOperationException($"Environement variable {AuthSchemeVariableName} is required.");
+                    string gateway = this.GetValueFromEnvironment(envVariables, GatewayHostnameVariableName);
+                    string apiVersion = this.GetValueFromEnvironment(envVariables, IotEdgedApiVersionVariableName);
+
+                    if (!string.Equals(authScheme, SasTokenAuthScheme, StringComparison.OrdinalIgnoreCase))
+                    {
+                        throw new InvalidOperationException($"Unsupported authentication scheme. Supported scheme is {SasTokenAuthScheme}.");
+                    }
+
+                    ISignatureProvider signatureProvider = string.IsNullOrWhiteSpace(apiVersion)
+                        ? new HttpHsmSignatureProvider(edgedUri)
+                        : new HttpHsmSignatureProvider(edgedUri, apiVersion);
+                    var authMethod = new ModuleAuthenticationWithHsm(signatureProvider, deviceId, moduleId);
+
+                    return authMethod;
+                }
+            }
+
+            string GetValueFromEnvironment(IDictionary envVariables, string variableName)
+            {
+                if (envVariables.Contains(variableName))
+                {
+                    return envVariables[variableName].ToString();
+                }
+
+                return null;
+            }
+
         }
 #endif
     }
