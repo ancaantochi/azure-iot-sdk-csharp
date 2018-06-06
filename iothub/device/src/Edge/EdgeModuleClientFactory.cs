@@ -1,12 +1,17 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
-
 namespace Microsoft.Azure.Devices.Client.Edge
 {
     using System;
     using System.Collections;
+    using System.Collections.Generic;
+    using System.Diagnostics;
+    using System.Linq;
+    using System.Runtime.InteropServices;
+    using System.Security.Cryptography.X509Certificates;
     using System.Threading.Tasks;
-    using Microsoft.Azure.Devices.Client.HsmAuthentication;
+    using HsmAuthentication;
+    using static System.Runtime.InteropServices.RuntimeInformation;
 
     /// <summary>
     /// Factory that creates ModuleClient based on the IoT Edge environment.
@@ -59,12 +64,16 @@ namespace Microsoft.Azure.Devices.Client.Edge
             if (!string.IsNullOrWhiteSpace(connectionString))
             {
                 string certPath = Environment.GetEnvironmentVariable(EdgeCaCertificateFileVariableName);
+
+                ICertificateValidator certificateValidator = null;
                 if (!string.IsNullOrWhiteSpace(certPath))
                 {
-                    trustBundleProvider.SetupTrustBundle(certPath, transportSettings);
+                    Debug.WriteLine("EdgeModuleClientFactory setupTrustBundle from file");
+                    var expectedRoot = new X509Certificate2(certPath);
+                    certificateValidator = this.GetCertificateValidator(new List<X509Certificate2>() { expectedRoot });
                 }
 
-                return new ModuleClient(this.CreateInternalClientFromConnectionString(connectionString));
+                return new ModuleClient(this.CreateInternalClientFromConnectionString(connectionString), certificateValidator);
             }
             else
             {
@@ -83,10 +92,35 @@ namespace Microsoft.Azure.Devices.Client.Edge
 
                 ISignatureProvider signatureProvider = new HttpHsmSignatureProvider(edgedUri, DefaultApiVersion);
                 var authMethod = new ModuleAuthenticationWithHsm(signatureProvider, deviceId, moduleId, generationId);
-                await trustBundleProvider.SetupTrustBundle(new Uri(edgedUri), DefaultApiVersion, transportSettings).ConfigureAwait(false);
 
-                return new ModuleClient(this.CreateInternalClientFromAuthenticationMethod(hostname, gateway, authMethod));
+                Debug.WriteLine("EdgeModuleClientFactory setupTrustBundle from service");
+                IList<X509Certificate2> certs = await trustBundleProvider.GetTrustBundleAsync(new Uri(edgedUri), DefaultApiVersion).ConfigureAwait(false);
+                ICertificateValidator certificateValidator = this.GetCertificateValidator(certs);
+
+                return new ModuleClient(this.CreateInternalClientFromAuthenticationMethod(hostname, gateway, authMethod), certificateValidator);
             }
+        }
+
+        private ICertificateValidator GetCertificateValidator(IList<X509Certificate2> certs)
+        {
+            if (certs.Count() != 0)
+            {
+                Debug.WriteLine("EdgeModuleClientFactory.GetCertificateValidator()");
+                if (IsOSPlatform(OSPlatform.Windows))
+                {
+                    Debug.WriteLine("EdgeModuleClientFactory GetCertificateValidator on Windows");
+                    var certValidator = new CustomCertificateValidator(certs, transportSettings);
+                    return certValidator;
+                }
+                else
+                {
+                    Debug.WriteLine("EdgeModuleClientFactory GetCertificateValidator on Linux");
+                    var certValidator = new InstalledCertificateValidator(certs);
+                    return certValidator;
+                }
+            }
+
+            return null;
         }
 
         InternalClient CreateInternalClientFromConnectionString(string connectionString)

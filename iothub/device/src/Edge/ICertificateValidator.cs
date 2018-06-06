@@ -3,12 +3,13 @@
 namespace Microsoft.Azure.Devices.Client.Edge
 {
     using System;
-    using System.Collections.Generic;
+    using System.Net.Security;
     using System.Security.Cryptography.X509Certificates;
-    using System.Threading.Tasks;
 
-    internal interface ITrustBundleProvider
+    internal interface ICertificateValidator
     {
-        Task<IList<X509Certificate2>> GetTrustBundleAsync(Uri providerUri, string defaultApiVersion);
+        void SetupCertificateValidation();
+
+        Func<object, X509Certificate, X509Chain, SslPolicyErrors, bool> GetCustomCertificateValidation();
     }
 }
