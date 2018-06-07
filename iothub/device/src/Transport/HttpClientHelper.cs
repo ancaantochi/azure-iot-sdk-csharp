@@ -65,7 +65,7 @@ namespace Microsoft.Azure.Devices.Client.Transport
             }
 
             this.httpClientObj = handler != null ? new HttpClient(handler) : new HttpClient();
-#elif NETSTANDARD1_3
+#elif NETSTANDARD1_3 || NETSTANDARD2_0
             this.httpClientObj = httpClientHandler != null ? new HttpClient(httpClientHandler) : new HttpClient();
 #else
             this.httpClientObj = new HttpClient();
