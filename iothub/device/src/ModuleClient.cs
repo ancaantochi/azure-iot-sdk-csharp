@@ -41,8 +41,6 @@ using System.Net.Http;
             {
                 throw new ArgumentException("A valid module ID should be specified to create a ModuleClient");
             }
-
-            this.certValidator.SetupCertificateValidation();
         }
 
         /// <summary>
@@ -423,11 +421,22 @@ using System.Net.Http;
 
         private Task<DirectMethodResult> InvokeMethodAsync(Uri uri, DirectMethodRequest directMethodRequest, CancellationToken cancellationToken)
         {
-            var httpClientHandler = new HttpClientHandler();
+            HttpClientHandler httpClientHandler = null;
+            var customCertificateValidation =  this.certValidator.GetCustomCertificateValidation();
 
+            if (customCertificateValidation != null)
+            {
 #if NETSTANDARD1_3 || NETSTANDARD2_0
-            httpClientHandler.ServerCertificateCustomValidationCallback = this.certValidator.GetCustomCertificateValidation();
+                httpClientHandler = new HttpClientHandler();
+                httpClientHandler.ServerCertificateCustomValidationCallback = customCertificateValidation;
+#else
+            httpClientHandler = new WebRequestHandler();
+            ((WebRequestHandler)httpClientHandler).ServerCertificateValidationCallback = (sender, certificate, chain, errors) =>
+            {
+                return customCertificateValidation(sender, certificate, chain, errors);
+            };
 #endif
+            }
 
             var context = new PipelineContext();
             context.Set(new ProductInfo() { Extra = this.InternalClient.ProductInfo });
@@ -452,6 +461,7 @@ using System.Net.Http;
         static Uri GetModuleMethodUri(string deviceId, string moduleId)
         {
             deviceId = WebUtility.UrlEncode(deviceId);
+            moduleId = WebUtility.UrlEncode(moduleId);
             return new Uri(string.Format(CultureInfo.InvariantCulture, ModuleMethodUriFormat, deviceId, moduleId), UriKind.Relative);
         }
 

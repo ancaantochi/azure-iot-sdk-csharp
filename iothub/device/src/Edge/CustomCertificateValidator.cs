@@ -1,32 +1,46 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Linq;
+using System.Net.Security;
+using System.Security.Cryptography.X509Certificates;
+using Microsoft.Azure.Devices.Client.Extensions;
+using Microsoft.Azure.Devices.Client.Transport.Mqtt;
+
 namespace Microsoft.Azure.Devices.Client.Edge
 {
-    using System;
-    using System.Collections.Generic;
-    using System.Diagnostics;
-    using System.Linq;
-    using System.Net.Security;
-    using System.Security.Cryptography.X509Certificates;
-    using Extensions;
-    using Transport.Mqtt;
-
     internal class CustomCertificateValidator : ICertificateValidator
     {
         private readonly IEnumerable<X509Certificate2> certs;
         private readonly ITransportSettings[] transportSettings;
 
-        public CustomCertificateValidator(IList<X509Certificate2> certs, ITransportSettings[] transportSettings)
+        private CustomCertificateValidator(IList<X509Certificate2> certs, ITransportSettings[] transportSettings)
         {
             this.certs = certs;
             this.transportSettings = transportSettings;
         }
 
-        public void SetupCertificateValidation()
+        public static CustomCertificateValidator Create(IList<X509Certificate2> certs,
+            ITransportSettings[] transportSettings)
+        {
+            var instance = new CustomCertificateValidator(certs, transportSettings);
+            instance.SetupCertificateValidation();
+            return instance;
+        }
+
+        public Func<object, X509Certificate, X509Chain, SslPolicyErrors, bool> GetCustomCertificateValidation()
+        {
+            Debug.WriteLine("CustomCertificateValidator.GetCustomCertificateValidation()");
+
+            return (sender, cert, chain, sslPolicyErrors) =>
+                ValidateCertificate(this.certs.First(), cert, chain, sslPolicyErrors);
+        }
+
+        private void SetupCertificateValidation()
         {
             Debug.WriteLine("CustomCertificateValidator.SetupCertificateValidation()");
-
-            var certValidationFunc = this.GetCustomCertificateValidation();
 
             foreach (ITransportSettings transportSetting in this.transportSettings)
             {
@@ -38,7 +52,7 @@ namespace Microsoft.Azure.Devices.Client.Edge
                         {
                             if (amqpTransportSettings.RemoteCertificateValidationCallback == null)
                             {
-                                amqpTransportSettings.RemoteCertificateValidationCallback = (sender, certificate, chain, sslPolicyErrors) => certValidationFunc(sender, certificate, chain, sslPolicyErrors);
+                                amqpTransportSettings.RemoteCertificateValidationCallback = (sender, certificate, chain, sslPolicyErrors) => ValidateCertificate(this.certs.First(), certificate, chain, sslPolicyErrors);
                             }
                         }
                         break;
@@ -52,7 +66,7 @@ namespace Microsoft.Azure.Devices.Client.Edge
                         {
                             if (mqttTransportSettings.RemoteCertificateValidationCallback == null)
                             {
-                                mqttTransportSettings.RemoteCertificateValidationCallback = (sender, certificate, chain, sslPolicyErrors) => certValidationFunc(sender, certificate, chain, sslPolicyErrors);
+                                mqttTransportSettings.RemoteCertificateValidationCallback = (sender, certificate, chain, sslPolicyErrors) => ValidateCertificate(this.certs.First(), certificate, chain, sslPolicyErrors);
                             }
                         }
                         break;
@@ -60,14 +74,6 @@ namespace Microsoft.Azure.Devices.Client.Edge
                         throw new InvalidOperationException("Unsupported Transport Type {0}".FormatInvariant(transportSetting.GetTransportType()));
                 }
             }
-        }
-
-        public Func<object, X509Certificate, X509Chain, SslPolicyErrors, bool> GetCustomCertificateValidation()
-        {
-            Debug.WriteLine("CustomCertificateValidator.GetCustomCertificateValidation()");
-
-            return (sender, cert, chain, sslPolicyErrors) =>
-                ValidateCertificate(this.certs.First(), cert, chain, sslPolicyErrors);
         }
 
         private bool ValidateCertificate(X509Certificate2 trustedCertificate, X509Certificate certificate, X509Chain chain, SslPolicyErrors sslPolicyErrors)

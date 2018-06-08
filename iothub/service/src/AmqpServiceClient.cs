@@ -343,6 +343,7 @@ namespace Microsoft.Azure.Devices
         static Uri GetModuleMethodUri(string deviceId, string moduleId)
         {
             deviceId = WebUtility.UrlEncode(deviceId);
+            moduleId = WebUtility.UrlEncode(moduleId);
             return new Uri(ModuleMethodUriFormat.FormatInvariant(deviceId, moduleId), UriKind.Relative);
         }
 #endif

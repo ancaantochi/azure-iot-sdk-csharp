@@ -1,18 +1,18 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Linq;
+using System.Runtime.InteropServices;
+using System.Security.Cryptography.X509Certificates;
+using System.Threading.Tasks;
+using Microsoft.Azure.Devices.Client.HsmAuthentication;
+using static System.Runtime.InteropServices.RuntimeInformation;
+
 namespace Microsoft.Azure.Devices.Client.Edge
 {
-    using System;
-    using System.Collections;
-    using System.Collections.Generic;
-    using System.Diagnostics;
-    using System.Linq;
-    using System.Runtime.InteropServices;
-    using System.Security.Cryptography.X509Certificates;
-    using System.Threading.Tasks;
-    using HsmAuthentication;
-    using static System.Runtime.InteropServices.RuntimeInformation;
-
     /// <summary>
     /// Factory that creates ModuleClient based on the IoT Edge environment.
     /// </summary>
@@ -65,7 +65,7 @@ namespace Microsoft.Azure.Devices.Client.Edge
             {
                 string certPath = Environment.GetEnvironmentVariable(EdgeCaCertificateFileVariableName);
 
-                ICertificateValidator certificateValidator = null;
+                ICertificateValidator certificateValidator = NullCertificateValidator.Instance;
                 if (!string.IsNullOrWhiteSpace(certPath))
                 {
                     Debug.WriteLine("EdgeModuleClientFactory setupTrustBundle from file");
@@ -109,18 +109,18 @@ namespace Microsoft.Azure.Devices.Client.Edge
                 if (IsOSPlatform(OSPlatform.Windows))
                 {
                     Debug.WriteLine("EdgeModuleClientFactory GetCertificateValidator on Windows");
-                    var certValidator = new CustomCertificateValidator(certs, transportSettings);
+                    var certValidator = CustomCertificateValidator.Create(certs, transportSettings);
                     return certValidator;
                 }
                 else
                 {
                     Debug.WriteLine("EdgeModuleClientFactory GetCertificateValidator on Linux");
-                    var certValidator = new InstalledCertificateValidator(certs);
+                    var certValidator = InstalledCertificateValidator.Create(certs);
                     return certValidator;
                 }
             }
 
-            return null;
+            return NullCertificateValidator.Instance;
         }
 
         InternalClient CreateInternalClientFromConnectionString(string connectionString)
