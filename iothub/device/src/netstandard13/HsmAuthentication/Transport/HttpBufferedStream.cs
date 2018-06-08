@@ -1,6 +1,7 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
+using System;
 using System.IO;
 using System.Text;
 using System.Threading;
@@ -12,11 +13,16 @@ namespace Microsoft.Azure.Devices.Client.HsmAuthentication.Transport
     {
         private const char CR = '\r';
         private const char LF = '\n';
-        private BufferedStream _innerStream;
+        private const int BufferSize = 2048;
+        private readonly Stream _innerStream;
+        private readonly byte[] _innerBuffer;
+        private int _bufferOffset;
+        private int _bufferCount;
 
         public HttpBufferedStream(Stream stream)
         {
-            _innerStream = new BufferedStream(stream);
+            _innerStream = stream;
+            _innerBuffer = new byte[BufferSize];
         }
 
         public override void Flush()
@@ -31,12 +37,24 @@ namespace Microsoft.Azure.Devices.Client.HsmAuthentication.Transport
 
         public override int Read(byte[] buffer, int offset, int count)
         {
-            return _innerStream.Read(buffer, offset, count);
+            if (_bufferCount == 0)
+            {
+                _bufferOffset = 0;
+                _bufferCount = _innerStream.Read(_innerBuffer, _bufferOffset, BufferSize);
+                
+            }
+            return ReadInternalBuffer(buffer, offset, count);
         }
 
-        public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+        public override async Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
         {
-            return _innerStream.ReadAsync(buffer, offset, count, cancellationToken);
+            if (_bufferCount == 0)
+            {
+                _bufferOffset = 0;
+                _bufferCount = await _innerStream.ReadAsync(_innerBuffer, _bufferOffset, BufferSize, cancellationToken);
+            }
+
+            return ReadInternalBuffer(buffer, offset, count);
         }
 
         public async Task<string> ReadLineAsync(CancellationToken cancellationToken)
@@ -47,7 +65,7 @@ namespace Microsoft.Azure.Devices.Client.HsmAuthentication.Transport
             var builder = new StringBuilder();
             while (true)
             {
-                var length = await _innerStream.ReadAsync(buffer, 0, buffer.Length, cancellationToken)
+                var length = await this.ReadAsync(buffer, 0, buffer.Length, cancellationToken)
                     .ConfigureAwait(false);
 
                 if (length == 0)
@@ -55,14 +73,14 @@ namespace Microsoft.Azure.Devices.Client.HsmAuthentication.Transport
                     throw new IOException("Unexpected end of stream.");
                 }
 
-                if (crFound && (char) buffer[position] == LF)
+                if (crFound && (char)buffer[position] == LF)
                 {
                     builder.Remove(builder.Length - 1, 1);
                     return builder.ToString();
                 }
 
-                builder.Append((char) buffer[position]);
-                crFound = (char) buffer[position] == CR;
+                builder.Append((char)buffer[position]);
+                crFound = (char)buffer[position] == CR;
             }
         }
 
@@ -86,7 +104,7 @@ namespace Microsoft.Azure.Devices.Client.HsmAuthentication.Transport
             return _innerStream.WriteAsync(buffer, offset, count, cancellationToken);
         }
 
-        public override bool CanRead => _innerStream.CanRead;
+        public override bool CanRead => _innerStream.CanRead || _bufferCount > 0;
 
         public override bool CanSeek => _innerStream.CanSeek;
 
@@ -103,6 +121,20 @@ namespace Microsoft.Azure.Devices.Client.HsmAuthentication.Transport
         protected override void Dispose(bool disposing)
         {
             _innerStream.Dispose();
+        }
+
+        private int ReadInternalBuffer(byte[] buffer, int offset, int count)
+        {
+            if (_bufferCount > 0)
+            {
+                int copyBytesCount = Math.Min(_bufferCount, count);
+                Buffer.BlockCopy(_innerBuffer, _bufferOffset, buffer, offset, copyBytesCount);
+                _bufferOffset += copyBytesCount;
+                _bufferCount -= copyBytesCount;
+                return copyBytesCount;
+            }
+
+            return 0;
         }
     }
 }
