@@ -1,6 +1,10 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
+using System.Collections.Generic;
+using System.Linq;
+using Microsoft.Azure.Devices.Client.Edge;
+
 namespace Microsoft.Azure.Devices.Client
 {
     using System;
@@ -37,11 +41,16 @@ namespace Microsoft.Azure.Devices.Client
             this.IotHubName = builder.IotHubName;
             this.DeviceId = builder.DeviceId;
             this.ModuleId = builder.ModuleId;
+            this.ServiceDiscovery = builder.ServiceDiscovery;
+
+            //TODO: async/await and try all IPs
+            ServiceProfile profile = EdgeHubServiceDiscovery.DiscoverEdgeHub(this.HostName).Result;
+            var address = profile.Addresses.Count > 0 ? profile.Addresses[0].Address : IPAddress.Loopback;
 
 #if NETSTANDARD1_3
             this.HttpsEndpoint = new UriBuilder("https", this.HostName).Uri;
 #elif !NETMF
-            this.HttpsEndpoint = new UriBuilder(Uri.UriSchemeHttps, this.HostName).Uri;
+            this.HttpsEndpoint = new UriBuilder(Uri.UriSchemeHttps, address.ToString()).Uri;
 #elif NETMF
             this.HttpsEndpoint = new Uri("https://" + this.HostName);
 #endif
@@ -74,6 +83,8 @@ namespace Microsoft.Azure.Devices.Client
             }
 #endif
         }
+
+        public IServiceDiscovery ServiceDiscovery { get; private set; }
 
         public string IotHubName
         {

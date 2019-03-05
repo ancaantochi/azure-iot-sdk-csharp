@@ -1,6 +1,12 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
+using System.Collections.Generic;
+using System.Linq;
+using System.Net.Sockets;
+using DotNetty.Common.Concurrency;
+using Microsoft.Azure.Devices.Client.Edge;
+
 namespace Microsoft.Azure.Devices.Client
 {
     using System;
@@ -300,19 +306,36 @@ namespace Microsoft.Azure.Devices.Client
                 var timeoutHelper = new TimeoutHelper(timeout);
 
                 AmqpSettings amqpSettings = CreateAmqpSettings();
-                TransportBase transport;
+                TransportBase transport = null;
 
                 token.ThrowIfCancellationRequested();
-
+                ServiceProfile sp = await EdgeHubServiceDiscovery.DiscoverEdgeHub(hostName).ConfigureAwait(false);
                 switch (this.AmqpTransportSettings.GetTransportType())
                 {
                     case TransportType.Amqp_WebSocket_Only:
-                        transport = await this.CreateClientWebSocketTransportAsync(timeoutHelper.RemainingTime()).ConfigureAwait(false);
+                        transport = await this.CreateClientWebSocketTransportAsync(timeoutHelper.RemainingTime(), sp.Addresses.Select(p => p.Address).ToArray()).ConfigureAwait(false);
                         break;
                     case TransportType.Amqp_Tcp_Only:
-                        TlsTransportSettings tlsTransportSettings = this.CreateTlsTransportSettings();
-                        var amqpTransportInitiator = new AmqpTransportInitiator(amqpSettings, tlsTransportSettings);
-                        transport = await amqpTransportInitiator.ConnectTaskAsync(timeoutHelper.RemainingTime()).ConfigureAwait(false);
+                        
+                        foreach (var ipAddress in sp.Addresses)
+                        {
+                            Exception ex;
+                            try
+                            {
+                                TlsTransportSettings tlsTransportSettings = this.CreateTlsTransportSettings(ipAddress.Address);
+                                var amqpTransportInitiator =
+                                    new AmqpTransportInitiator(amqpSettings, tlsTransportSettings);
+                                transport = await amqpTransportInitiator.ConnectTaskAsync(timeoutHelper.RemainingTime())
+                                    .ConfigureAwait(false);
+                                break;
+                            }
+                            catch (Exception e)
+                            {
+                                ex = e;
+                            }
+                        }
+
+                        if (transport == null) throw new SocketException(1);
                         break;
                     default:
                         throw new InvalidOperationException("AmqpTransportSettings must specify WebSocketOnly or TcpOnly");
@@ -383,6 +406,7 @@ namespace Microsoft.Azure.Devices.Client
 
                 // Set SubProtocol to AMQPWSB10
                 websocket.Options.AddSubProtocol(WebSocketConstants.SubProtocols.Amqpwsb10);
+                websocket.Options.SetRequestHeader("Host", hostName);
 
                 // Check if we're configured to use a proxy server
                 IWebProxy webProxy = this.AmqpTransportSettings.Proxy;
@@ -426,7 +450,7 @@ namespace Microsoft.Azure.Devices.Client
             }
         }
 
-        async Task<TransportBase> CreateClientWebSocketTransportAsync(TimeSpan timeout)
+        async Task<TransportBase> CreateClientWebSocketTransportAsync(TimeSpan timeout, IPAddress[] addresses)
         {
             try
             {
@@ -438,7 +462,8 @@ namespace Microsoft.Azure.Devices.Client
             // NETSTANDARD1_3 implementation doesn't set client certs, so we want to tell the IoT Hub to not ask for them
             additionalQueryParams = "?iothub-no-client-cert=true";
 #endif
-                Uri websocketUri = new Uri(WebSocketConstants.Scheme + this.hostName + ":" + WebSocketConstants.SecurePort + WebSocketConstants.UriSuffix + additionalQueryParams);
+                //TODO: use all addresses
+                Uri websocketUri = new Uri(WebSocketConstants.Scheme + addresses[0] + ":" + WebSocketConstants.SecurePort + WebSocketConstants.UriSuffix + additionalQueryParams);
                 // Use Legacy WebSocket if it is running on Windows 7 or older. Windows 7/Windows 2008 R2 is version 6.1
 #if NET451
             if (Environment.OSVersion.Version.Major < 6 || (Environment.OSVersion.Version.Major == 6 && Environment.OSVersion.Version.Minor <= 1))
@@ -510,12 +535,12 @@ namespace Microsoft.Azure.Devices.Client
             linkSettings.AddProperty(IotHubAmqpProperty.ChannelCorrelationId, "twin:" + corrId);
             return linkSettings;
         }
-
-        TlsTransportSettings CreateTlsTransportSettings()
+       
+        TlsTransportSettings CreateTlsTransportSettings(IPAddress ipaddress)
         {
-            var tcpTransportSettings = new TcpTransportSettings()
+           var  tcpTransportSettings = new TcpTransportSettings()
             {
-                Host = this.hostName,
+                Host = ipaddress.ToString(),
                 Port = this.port
             };
 

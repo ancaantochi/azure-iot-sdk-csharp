@@ -52,6 +52,7 @@ namespace Microsoft.Azure.Devices.Client.Transport
             this.deviceId = iotHubConnectionString.DeviceId;
             this.moduleId = iotHubConnectionString.ModuleId;
             this.httpClientHelper = new HttpClientHelper(
+                iotHubConnectionString.HostName,
                 iotHubConnectionString.HttpsEndpoint,
                 iotHubConnectionString,
                 ExceptionHandlingHelper.GetDefaultErrorMapping(),

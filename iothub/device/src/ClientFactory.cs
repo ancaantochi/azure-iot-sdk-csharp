@@ -29,6 +29,43 @@ namespace Microsoft.Azure.Devices.Client
             return Create(hostname, authenticationMethod, TransportType.Amqp);
         }
 
+        public static InternalClient Create(IServiceDiscovery serviceDiscovery, string hostname, IAuthenticationMethod authenticationMethod, ITransportSettings[] transportSettings)
+        {
+            if (serviceDiscovery == null)
+            {
+                throw new ArgumentNullException("serviceDiscovery");
+            }
+            if (authenticationMethod == null)
+            {
+                throw new ArgumentNullException("authenticationMethod");
+            }
+            if (transportSettings == null)
+            {
+                throw new ArgumentNullException("transportSettings");
+            }
+
+            var connectionStringBuilder = IotHubConnectionStringBuilder.Create(serviceDiscovery, hostname, authenticationMethod);
+#if !NETMF
+            if (authenticationMethod is DeviceAuthenticationWithX509Certificate)
+            {
+                if (connectionStringBuilder.Certificate == null)
+                {
+                    throw new ArgumentException("certificate must be present in DeviceAuthenticationWithX509Certificate");
+                }
+
+                if (!connectionStringBuilder.Certificate.HasPrivateKey)
+                {
+                    throw new ArgumentException("certificate in DeviceAuthenticationWithX509Certificate must have a private key");
+                }
+
+                InternalClient dc = CreateFromConnectionString(connectionStringBuilder.ToIotHubConnectionString(), PopulateCertificateInTransportSettings(connectionStringBuilder, transportSettings), BuildPipeline());
+                dc.Certificate = connectionStringBuilder.Certificate;
+                return dc;
+            }
+#endif
+            return CreateFromConnectionString(connectionStringBuilder.ToIotHubConnectionString(), PopulateCertificateInTransportSettings(connectionStringBuilder, transportSettings), BuildPipeline());
+        }
+
         /// <summary>
         /// Create an Amqp InternalClient from individual parameters
         /// </summary>
@@ -310,32 +347,10 @@ namespace Microsoft.Azure.Devices.Client
         }
 
         internal static InternalClient CreateFromConnectionString(
-            string connectionString,
-            IAuthenticationMethod authenticationMethod,
+            IotHubConnectionString iotHubConnectionString,
             ITransportSettings[] transportSettings,
             IDeviceClientPipelineBuilder pipelineBuilder)
         {
-            if (connectionString == null)
-            {
-                throw new ArgumentNullException(nameof(connectionString));
-            }
-
-            if (transportSettings == null)
-            {
-                throw new ArgumentNullException(nameof(transportSettings));
-            }
-
-            if (transportSettings.Length == 0)
-            {
-                throw new ArgumentOutOfRangeException(nameof(connectionString), "Must specify at least one TransportSettings instance");
-            }
-
-            var builder = IotHubConnectionStringBuilder.CreateWithIAuthenticationOverride(
-                connectionString,
-                authenticationMethod);
-
-            IotHubConnectionString iotHubConnectionString = builder.ToIotHubConnectionString();
-
             foreach (ITransportSettings transportSetting in transportSettings)
             {
                 switch (transportSetting.GetTransportType())
@@ -372,6 +387,37 @@ namespace Microsoft.Azure.Devices.Client
 
             if (Logging.IsEnabled) Logging.CreateFromConnectionString(client, $"HostName={iotHubConnectionString.HostName};DeviceId={iotHubConnectionString.DeviceId}", transportSettings);
             return client;
+        }
+
+        internal static InternalClient CreateFromConnectionString(
+            string connectionString,
+            IAuthenticationMethod authenticationMethod,
+            ITransportSettings[] transportSettings,
+            IDeviceClientPipelineBuilder pipelineBuilder)
+        {
+            if (connectionString == null)
+            {
+                throw new ArgumentNullException(nameof(connectionString));
+            }
+
+            if (transportSettings == null)
+            {
+                throw new ArgumentNullException(nameof(transportSettings));
+            }
+
+            if (transportSettings.Length == 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(connectionString), "Must specify at least one TransportSettings instance");
+            }
+
+            var builder = IotHubConnectionStringBuilder.CreateWithIAuthenticationOverride(
+                connectionString,
+                authenticationMethod);
+
+            IotHubConnectionString iotHubConnectionString = builder.ToIotHubConnectionString();
+
+            return CreateFromConnectionString(iotHubConnectionString, transportSettings,
+                pipelineBuilder);
         }
         
         static IDeviceClientPipelineBuilder BuildPipeline()

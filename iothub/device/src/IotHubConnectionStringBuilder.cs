@@ -61,6 +61,28 @@ namespace Microsoft.Azure.Devices.Client
         /// <param name="hostname">The fully-qualified DNS hostname of IoT Hub</param>
         /// <param name="authenticationMethod">The authentication method that is used</param>
         /// <returns>A new instance of the <see cref="IotHubConnectionStringBuilder"/> class with a populated connection string.</returns>
+        public static IotHubConnectionStringBuilder Create(IServiceDiscovery serviceDiscovery, string hostname, IAuthenticationMethod authenticationMethod)
+        {
+            var iotHubConnectionStringBuilder = new IotHubConnectionStringBuilder()
+            {
+                HostName = hostname,
+                ServiceDiscovery = serviceDiscovery,
+                AuthenticationMethod = authenticationMethod
+            };
+
+            iotHubConnectionStringBuilder.Validate();
+
+            return iotHubConnectionStringBuilder;
+        }
+
+        public IServiceDiscovery ServiceDiscovery { get; private set; }
+
+        /// <summary>
+        /// Creates a connection string based on the hostname of the IoT Hub and the authentication method passed as a parameter.
+        /// </summary>
+        /// <param name="hostname">The fully-qualified DNS hostname of IoT Hub</param>
+        /// <param name="authenticationMethod">The authentication method that is used</param>
+        /// <returns>A new instance of the <see cref="IotHubConnectionStringBuilder"/> class with a populated connection string.</returns>
         public static IotHubConnectionStringBuilder Create(string hostname, IAuthenticationMethod authenticationMethod)
         {
             return Create(hostname, null, authenticationMethod);

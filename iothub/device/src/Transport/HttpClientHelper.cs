@@ -38,8 +38,10 @@ namespace Microsoft.Azure.Devices.Client.Transport
         HttpClient httpClientObj;
         bool isDisposed;
         ProductInfo productInfo;
+        private string hostname;
 
         public HttpClientHelper(
+            string hostname,
             Uri baseAddress,
             IAuthorizationProvider authenticationHeaderProvider,
             IDictionary<HttpStatusCode, Func<HttpResponseMessage, Task<Exception>>> defaultErrorMapping,
@@ -51,6 +53,7 @@ namespace Microsoft.Azure.Devices.Client.Transport
             IWebProxy proxy
             )
         {
+            this.hostname = hostname;
             this.baseAddress = baseAddress;
             this.authenticationHeaderProvider = authenticationHeaderProvider;
             this.defaultErrorMapping =
@@ -436,6 +439,7 @@ namespace Microsoft.Azure.Devices.Client.Transport
                 }
 
                 msg.Headers.UserAgent.ParseAdd(this.productInfo.ToString(UserAgentFormats.Http));
+                msg.Headers.Add(HttpRequestHeader.Host.ToString(),  this.hostname);
 
                 if (modifyRequestMessageAsync != null) await modifyRequestMessageAsync(msg, cancellationToken).ConfigureAwait(false);
 

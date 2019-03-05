@@ -16,6 +16,7 @@ namespace Microsoft.Azure.Devices.Client.Transport.Mqtt
 
         public MqttIotHubAdapter Create(
             IMqttIotHubEventHandler mqttIotHubEventHandler,
+            string hostname,
             IotHubConnectionString iotHubConnectionString, 
             MqttTransportSettings mqttTransportSettings,
             ProductInfo productInfo)
@@ -25,7 +26,7 @@ namespace Microsoft.Azure.Devices.Client.Transport.Mqtt
             return new MqttIotHubAdapter(
                 iotHubConnectionString.DeviceId,
                 iotHubConnectionString.ModuleId,
-                iotHubConnectionString.HostName,
+                hostname,
                 mqttTransportSettings.ClientCertificate != null ? null : iotHubConnectionString,
                 mqttTransportSettings,
                 willMessage,

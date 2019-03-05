@@ -36,6 +36,12 @@ namespace Microsoft.Azure.Devices.Client
             }
         }
 
+        public static DeviceClient Create(IServiceDiscovery serviceDiscovery, string hostname, IAuthenticationMethod authenticationMethod,
+            ITransportSettings[] transportSettings)
+        {
+            return Create(() => ClientFactory.Create(serviceDiscovery, hostname, authenticationMethod, transportSettings));
+        }
+
         /// <summary>
         /// Create an Amqp DeviceClient from individual parameters
         /// </summary>
